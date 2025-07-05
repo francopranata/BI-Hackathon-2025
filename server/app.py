@@ -57,6 +57,11 @@ df_data_full = pd.read_csv(DATA_PATH)
 all_required = ['account_number'] + expected_features
 df_data = df_data_full[all_required].copy()
 
+# === Helper function ===
+def get_row_by_account(account_number: int) -> pd.DataFrame:
+    """Mengambil baris data berdasarkan account_number."""
+    return df_data[df_data["account_number"] == account_number]
+
 # === Flask API ===
 app = Flask(__name__)
 
@@ -67,7 +72,7 @@ def predict():
         if account_number is None:
             return jsonify({"error": "Missing account_number"}), 400
 
-        row = df_data[df_data["account_number"] == int(account_number)]
+        row = get_row_by_account(int(account_number))
         if row.empty:
             return jsonify({"error": f"Account number {account_number} not found"}), 404
 
