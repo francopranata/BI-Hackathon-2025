@@ -1,0 +1,112 @@
+import pandas as pd
+import joblib
+from flask import Flask, request, jsonify
+import numpy as np
+import xgboost as xgb
+import logging
+import os
+import requests
+
+logging.basicConfig(level=logging.INFO, format='%(asctime)s [%(levelname)s] %(message)s')
+
+# === Fungsi unduh file jika tidak tersedia ===
+def download_if_missing(url, dest_path):
+    if not os.path.exists(dest_path):
+        logging.info(f"Downloading {dest_path} from {url} ...")
+        r = requests.get(url, stream=True)
+        if r.status_code != 200:
+            raise Exception(f"Failed to download {url}: {r.status_code}")
+        with open(dest_path, "wb") as f:
+            for chunk in r.iter_content(chunk_size=8192):
+                if chunk:
+                    f.write(chunk)
+        logging.info(f"Downloaded {dest_path}")
+
+# === Cek & unduh file besar dari Hugging Face atau lainnya ===
+os.makedirs("models", exist_ok=True)
+os.makedirs("data", exist_ok=True)
+os.makedirs("assets", exist_ok=True)
+
+download_if_missing(
+    "https://huggingface.co/Franco197/xgb_best_fold_5/resolve/main/xgb_best_fold_5.json",
+    "models/xgb_best_fold_5.json"
+)
+download_if_missing(
+    "https://huggingface.co/Franco197/xgb_best_fold_5/resolve/main/final1.csv",
+    "data/final1.csv"
+)
+download_if_missing(
+    "https://huggingface.co/Franco197/xgb_best_fold_5/resolve/main/features2.pkl",
+    "assets/features2.pkl"
+)
+
+# === Load assets ===
+MODEL_PATH = "models/xgb_best_fold_5.json"
+FEATURE_PATH = "assets/features2.pkl"
+DATA_PATH = "data/final1.csv"
+
+model = xgb.Booster()
+model.load_model(MODEL_PATH)
+expected_features = joblib.load(FEATURE_PATH)
+
+df_data_full = pd.read_csv(DATA_PATH)
+all_required = ['account_number'] + expected_features
+df_data = df_data_full[all_required].copy()
+
+# === Flask API ===
+app = Flask(__name__)
+
+@app.route("/predict", methods=["POST"])
+def predict():
+    try:
+        account_number = request.json.get("account_number")
+        if account_number is None:
+            return jsonify({"error": "Missing account_number"}), 400
+
+        row = df_data[df_data["account_number"] == int(account_number)]
+        if row.empty:
+            return jsonify({"error": f"Account number {account_number} not found"}), 404
+
+        x = row[expected_features].copy()
+
+        # Validasi data bertipe object
+        object_cols = x.select_dtypes(include='object').columns.tolist()
+        if object_cols:
+            return jsonify({
+                "error": f"Kolom berikut masih berupa string dan harus diubah ke numerik: {object_cols}"
+            }), 400
+
+        # Validasi kesesuaian fitur
+        if set(x.columns) != set(expected_features):
+            return jsonify({
+                "error": "Mismatch kolom fitur",
+                "expected_not_found": list(set(expected_features) - set(x.columns)),
+                "unexpected_present": list(set(x.columns) - set(expected_features))
+            }), 400
+
+        x = x.astype(np.float32)
+        dtest = xgb.DMatrix(x.values, feature_names=expected_features)
+        proba = float(model.predict(dtest)[0])
+
+        # Threshold klasifikasi
+        if proba >= 0.05:
+            status = "BERBAHAYA"
+        elif proba >= 0.03:
+            status = "WARNING"
+        else:
+            status = "AMAN"
+
+        logging.info(f"[{account_number}] status: {status}, prob: {proba:.4f}")
+        return jsonify({
+            "account_number": account_number,
+            "status": status,
+            "probability": round(proba, 4)
+        })
+
+    except Exception as e:
+        logging.error("Exception occurred", exc_info=True)
+        return jsonify({"error": f"Internal Server Error: {str(e)}"}), 500
+
+if __name__ == "__main__":
+    port = int(os.environ.get("PORT", 5000))
+    app.run(debug=True, port=port)
