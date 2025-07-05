@@ -22,21 +22,25 @@ def download_if_missing(url, dest_path):
                     f.write(chunk)
         logging.info(f"Downloaded {dest_path}")
 
-# === Cek & unduh file besar dari Hugging Face atau lainnya ===
+# === Setup direktori ===
 os.makedirs("models", exist_ok=True)
 os.makedirs("data", exist_ok=True)
 os.makedirs("assets", exist_ok=True)
 
+# Unduh model dari Hugging Face
 download_if_missing(
     "https://huggingface.co/Franco197/xgb_best_fold_5/resolve/main/xgb_best_fold_5.json",
     "models/xgb_best_fold_5.json"
 )
+
+# Unduh final1.csv dari Google Drive menggunakan gdown
+if not os.path.exists("data/final1.csv"):
+    logging.info("Downloading final1.csv from Google Drive...")
+    os.system("gdown --id 11CSR7aw0WQEx2WOasgqBNfZwLsmUfrS9 -O data/final1.csv")
+
+# Unduh features dari GitHub
 download_if_missing(
-    "https://huggingface.co/Franco197/xgb_best_fold_5/resolve/main/final1.csv",
-    "data/final1.csv"
-)
-download_if_missing(
-    "https://huggingface.co/Franco197/xgb_best_fold_5/resolve/main/features2.pkl",
+    "https://raw.githubusercontent.com/francopranata/BI-Hackathon-2025/main/assets/features2.pkl",
     "assets/features2.pkl"
 )
 
@@ -69,14 +73,12 @@ def predict():
 
         x = row[expected_features].copy()
 
-        # Validasi data bertipe object
         object_cols = x.select_dtypes(include='object').columns.tolist()
         if object_cols:
             return jsonify({
                 "error": f"Kolom berikut masih berupa string dan harus diubah ke numerik: {object_cols}"
             }), 400
 
-        # Validasi kesesuaian fitur
         if set(x.columns) != set(expected_features):
             return jsonify({
                 "error": "Mismatch kolom fitur",
@@ -88,7 +90,6 @@ def predict():
         dtest = xgb.DMatrix(x.values, feature_names=expected_features)
         proba = float(model.predict(dtest)[0])
 
-        # Threshold klasifikasi
         if proba >= 0.05:
             status = "BERBAHAYA"
         elif proba >= 0.03:
