@@ -113,6 +113,30 @@ def predict():
         logging.error("Exception occurred", exc_info=True)
         return jsonify({"error": f"Internal Server Error: {str(e)}"}), 500
 
+@app.route("/verify", methods=["POST"])
+def verify():
+    try:
+        account_number = request.json.get("account_number")
+        if not account_number:
+            return jsonify({"error": "Missing account_number"}), 400
+
+        # Gunakan fungsi yang sudah ada untuk mencari rekening
+        row = get_row_by_account_number(account_number)
+
+        if not row.empty:
+            # Jika rekening ditemukan, kembalikan sukses dengan nama samaran
+            logging.info(f"[/verify] Rekening ditemukan: {account_number}")
+            return jsonify({"account_name": "A*** N***"}), 200
+        else:
+            # Jika tidak ditemukan, kembalikan error 404
+            logging.info(f"[/verify] Rekening TIDAK ditemukan: {account_number}")
+            return jsonify({"error": f"Account number {account_number} not found"}), 404
+
+    except Exception as e:
+        logging.error(f"[/verify] Exception occurred: {e}", exc_info=True)
+        return jsonify({"error": f"Internal Server Error: {str(e)}"}), 500
+
 if __name__ == "__main__":
-    port = int(os.environ.get("PORT", 5000))
-    app.run(debug=True, port=port)
+    # Ganti port ke 5001 atau port lain yang bebas
+    port = int(os.environ.get("PORT", 5001)) 
+    app.run(host='0.0.0.0', debug=True, port=port)
