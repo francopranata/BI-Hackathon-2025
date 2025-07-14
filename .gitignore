@@ -4,6 +4,6 @@ models/xgb_best_fold_5.json
 data/dummy_elliptic_txs_features1.csv
 data/elliptic_txs_edgelist.csv
 .DS_Store
-testApi.py
+server/rekening/testApi.py
 testAPI.py
 testApiVerify.py
