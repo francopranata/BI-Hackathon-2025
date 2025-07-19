@@ -8,13 +8,11 @@ from torch_geometric.data import Data
 from torch_geometric.nn import GINConv
 import gdown
 
-# --- 1. KONFIGURASI & SETUP ---
 app = Flask(__name__)
 
 os.makedirs("data", exist_ok=True)
 os.makedirs("models", exist_ok=True)
 
-# Link Google Drive ID (diambil dari URL)
 FEATURES_DRIVE_ID = "1YIwRjMfmwFc-xtmeyb5Nxq2k3bLVUFV2"
 EDGELIST_DRIVE_ID = "1iKsZStdmIG7BQWMGXpLvYSpL42GAR8zL"
 
@@ -22,7 +20,6 @@ FEATURES_PATH = "data/dummy_elliptic_txs_features1.csv"
 EDGELIST_PATH = "data/elliptic_txs_edgelist.csv"
 MODEL_PATH = "models/gin_model.pth"
 
-# --- 2. DOWNLOAD FILE JIKA BELUM ADA ---
 def download_from_drive(drive_id, output_path):
     if not os.path.exists(output_path):
         print(f"📥 Mengunduh {output_path} dari Google Drive...")
@@ -32,7 +29,6 @@ def download_from_drive(drive_id, output_path):
 download_from_drive(FEATURES_DRIVE_ID, FEATURES_PATH)
 download_from_drive(EDGELIST_DRIVE_ID, EDGELIST_PATH)
 
-# --- 3. KELAS GIN ---
 class GIN(torch.nn.Module):
     def __init__(self, num_node_features, num_classes):
         super(GIN, self).__init__()
@@ -50,7 +46,6 @@ class GIN(torch.nn.Module):
         x = self.fc(x)
         return F.log_softmax(x, dim=1)
 
-# --- 4. LOAD DATASET & GRAPH ---
 def load_resources():
     try:
         df_features = pd.read_csv(FEATURES_PATH)
@@ -75,27 +70,24 @@ def load_resources():
 
         return graph, wallet_map
     except Exception as e:
-        print(f"❌ Error saat memproses data: {e}")
+        print(f"Error saat memproses data: {e}")
         return None, None
 
 graph_data, wallet_to_nodes_map = load_resources()
 
-# --- 5. LOAD MODEL ---
 model = GIN(num_node_features=166, num_classes=3)
 try:
     if graph_data:
         model.load_state_dict(torch.load(MODEL_PATH, map_location=torch.device('cpu')))
         model.eval()
-        print("✅ Model berhasil dimuat.")
+        print("Model berhasil dimuat.")
 except Exception as e:
-    print(f"❌ Gagal memuat model: {e}")
+    print(f"Gagal memuat model: {e}")
     model = None
 
-# --- 6. KELAS MAPPING ---
 CLASS_MAP = {0: "AMAN", 1: "BERBAHAYA", 2: "TIDAK DIKETAHUI"}
 
-# --- 7. API ---
-@app.route('/predict/<string:wallet_address>', methods=['GET'])
+@app.route('/predict/<string:wallet_address>', methods=['POST'])
 def predict_wallet_status(wallet_address):
     if model is None or graph_data is None:
         return jsonify({"error": "Server tidak siap, model atau data gagal dimuat."}), 500
@@ -122,7 +114,6 @@ def predict_wallet_status(wallet_address):
         "total_transactions": len(node_indices)
     })
 
-# --- 8. RUN SERVER ---
 if __name__ == '__main__':
     port = int(os.environ.get("PORT", 5002))
     app.run(host="0.0.0.0", port=port, debug=False)
